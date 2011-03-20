@@ -1,4 +1,5 @@
 /* esh.c - Eugene's SHell */
+/* TODO: Pipes */
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -14,10 +15,10 @@
 #define CMD_EXIT        3
 #define CMD_ERR         -1
 
+int parse(char *buf, int n);
 int cmd_ls(void);
 int cmd_chdir(char *path);
 int cmd_cwd(void);
-int parse(char *buf, int n);
 
 int main(void) {
         char buf[INPUTMAX];
@@ -54,11 +55,11 @@ int main(void) {
         return 0;
 }
 
+/* Launch external "ls" command */
 int cmd_ls(void) {
         int pid;
         char *cmd[] = { "ls", NULL };
 
-        /* Launch external program */
         pid = fork();
         if (pid == 0) {
                 if (execvp(*cmd, cmd) < 0) {
@@ -73,6 +74,7 @@ int cmd_ls(void) {
         return 0;
 }
 
+/* Built-in current working directory command */
 int cmd_cwd(void) {
         char dir[DIRMAX];
 
@@ -83,6 +85,7 @@ int cmd_cwd(void) {
         return 0;
 }
 
+/* Built-in change directory command */
 int cmd_chdir(char *path) {
         return chdir(path);
 }
@@ -92,10 +95,8 @@ int parse(char *buf, int n) {
 
         tok = strtok(buf, " ");
         if (strncmp(tok, "cd", strlen(tok)) == 0) {
-                if ((tok = strtok(NULL, " ")) == NULL) {
-                        printf("error: cd command requires a relative path\n");
+                if ((tok = strtok(NULL, " ")) == NULL)
                         return CMD_ERR;
-                }
                 /* Store path in buf */
                 strncpy(buf, tok, n);
                 return CMD_CHDIR;
