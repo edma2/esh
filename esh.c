@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <stdlib.h>
 
 #define DIRMAX          100
 #define INPUTMAX        100        
@@ -13,60 +14,70 @@
 #define CMD_LS          1
 #define CMD_CWD         2
 #define CMD_EXIT        3
-#define CMD_ERR         -1
 
-int parse(char *buf, int n);
-int cmd_ls(void);
-int cmd_chdir(char *path);
-int cmd_cwd(void);
+int external_cmd(char **args);
+int builtin_chdir(char *path);
+int builtin_cwd(void);
+void splitstring(char *buf, char *toks[], int n);
 
 int main(void) {
         char buf[INPUTMAX];
-        int retval;
+        char *args[MAXTOK];
 
         while (1) {
                 printf("esh$ ");
+
+                /* Parse input into tokens */
                 if (fgets(buf, INPUTMAX, stdin) == NULL)
                         break;
                 buf[strlen(buf)-1] = '\0';
-                retval = parse(buf, strlen(buf));
-                switch (retval) {
-                        case CMD_CHDIR:
-                                if (cmd_chdir(buf) < 0)
-                                        fprintf(stderr, "error: cmd_chdir() failed\n");
-                                break;
-                        case CMD_LS:
-                                if (cmd_ls() < 0)
-                                        fprintf(stderr, "error: cmd_ls() failed\n");
-                                break;
-                        case CMD_CWD:
-                                if (cmd_cwd() < 0) 
-                                        fprintf(stderr, "error: cmd_cwd() failed\n");
-                                break;
-                        case CMD_EXIT:
-                                printf("Have a nice day!\n");
-                                return 0;
-                        case CMD_ERR:
-                                fprintf(stderr, "esh: unknown string pattern\n");
-                                break;
+                splitstring(buf, args, MAXTOK);
+
+                /* Look at first token */
+                if (strcmp(args[0], "cd") == 0) {
+                        if (builtin_chdir(args[1]) < 0)
+                                fprintf(stderr, "error: builtin cd failed\n");
+                } else if (strcmp(args[0], "pwd") == 0) {
+                        if (builtin_cwd() < 0) 
+                                fprintf(stderr, "error: builtin pwd failed\n");
+                        break;
+                } else if (strcmp(args[0], "bye") == 0) {
+                        printf("Have a nice day!\n");
+                        return 0;
+                } else {
+                        external_cmd(args);
                 }
         }
 
         return 0;
 }
 
-/* Launch external "ls" command */
-int cmd_ls(void) {
+/* Split a string into an array of tokens */
+void splitstring(char *buf, char *toks[], int n) {
+        int i;
+
+        toks[0] = strtok(buf, " ");
+        /* Parse arguments */
+        for (i = 1; i < n; i++) {
+                if ((toks[i] = strtok(NULL, " ")) == NULL)
+                        break;
+        }
+}
+
+/* Launch external command */
+int external_cmd(char **args) {
         int pid;
-        char *cmd[] = { "ls", NULL };
 
         pid = fork();
         if (pid == 0) {
-                if (execvp(*cmd, cmd) < 0) {
+                /* Child process */
+                if (execvp(*args, args) < 0) {
+                        /* Kill child process immediately if failed */
                         fprintf(stderr, "error: execvp() failed\n");
-                        return -1;
+                        exit(-1);
                 }
         } else {
+                /* Wait for child process to die */
                 while (wait(NULL) != pid)
                         ;
         }
@@ -75,7 +86,7 @@ int cmd_ls(void) {
 }
 
 /* Built-in current working directory command */
-int cmd_cwd(void) {
+int builtin_cwd(void) {
         char dir[DIRMAX];
 
         if (getcwd(dir, DIRMAX) == NULL)
@@ -86,26 +97,6 @@ int cmd_cwd(void) {
 }
 
 /* Built-in change directory command */
-int cmd_chdir(char *path) {
+int builtin_chdir(char *path) {
         return chdir(path);
-}
-
-int parse(char *buf, int n) {
-        char *tok;
-
-        tok = strtok(buf, " ");
-        if (strncmp(tok, "cd", strlen(tok)) == 0) {
-                if ((tok = strtok(NULL, " ")) == NULL)
-                        return CMD_ERR;
-                /* Store path in buf */
-                strncpy(buf, tok, n);
-                return CMD_CHDIR;
-        } else if (strncmp(tok, "ls", strlen(tok)) == 0) {
-                return CMD_LS;
-        } else if (strncmp(tok, "pwd", strlen(tok)) == 0) {
-                return CMD_CWD;
-        } else if (strncmp(tok, "bye", strlen(tok)) == 0) {
-                return CMD_EXIT;
-        }
-        return CMD_ERR;
 }
