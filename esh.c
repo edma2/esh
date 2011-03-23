@@ -9,11 +9,7 @@
 #define DIRMAX          100
 #define INPUTMAX        100        
 #define MAXTOK          100
-
-#define CMD_CHDIR       0
-#define CMD_LS          1
-#define CMD_CWD         2
-#define CMD_EXIT        3
+#define PATH            "/home/edma2/bin/esh" /* Fake path */
 
 int external_cmd(char **args);
 int builtin_chdir(char *path);
@@ -23,6 +19,9 @@ void splitstring(char *buf, char *toks[], int n);
 int main(void) {
         char buf[INPUTMAX];
         char *args[MAXTOK];
+
+        /* Initialization stuff */
+        setenv("SHELL", PATH, 1);
 
         while (1) {
                 printf("esh$ ");
@@ -40,7 +39,6 @@ int main(void) {
                 } else if (strcmp(args[0], "pwd") == 0) {
                         if (builtin_cwd() < 0) 
                                 fprintf(stderr, "error: builtin pwd failed\n");
-                        break;
                 } else if (strcmp(args[0], "bye") == 0) {
                         printf("Have a nice day!\n");
                         return 0;
@@ -61,6 +59,9 @@ void splitstring(char *buf, char *toks[], int n) {
         for (i = 1; i < n; i++) {
                 if ((toks[i] = strtok(NULL, " ")) == NULL)
                         break;
+                /* Environment variable */
+                if (*toks[i] == '$')
+                        toks[i] = getenv(toks[i]+1);
         }
 }
 
