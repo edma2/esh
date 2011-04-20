@@ -16,8 +16,8 @@
 int builtin_chdir(char *path);
 int builtin_cwd(void);
 int parse(char *input, char *cmd[CMDS][TOKS], int n);
-int execcmds(char *cmd[CMDS][TOKS], int fd);
-void free_cmd(char *cmd[CMDS][TOKS]);
+int cmd_exec(char *cmd[CMDS][TOKS], int fd);
+void cmd_free(char *cmd[CMDS][TOKS]);
 
 int main(void) {
         char input[INPUTMAX];
@@ -33,7 +33,7 @@ int main(void) {
                 input[strlen(input)-1] = '\0';
                 if ((fd = parse(input, cmd, INPUTMAX)) < 0) {
                         fprintf(stderr, "error: parse() failed\n");
-                        free_cmd(cmd);
+                        cmd_free(cmd);
                         continue;
                 }
                 /* Look at first token */
@@ -51,14 +51,14 @@ int main(void) {
                         if (cmd[0][1] != NULL || cmd[1][0] != NULL) {
                                 fprintf(stderr, "usage: exit\n");
                         } else {
-                                free_cmd(cmd);
+                                cmd_free(cmd);
                                 return 0;
                         }
                 } else {
-                        if (execcmds(cmd, fd) < 0)
-                                fprintf(stderr, "error: execcmds() failed\n");
+                        if (cmd_exec(cmd, fd) < 0)
+                                fprintf(stderr, "error: cmd_exec() failed\n");
                 }
-                free_cmd(cmd);
+                cmd_free(cmd);
         }
 
         return 0;
@@ -244,14 +244,14 @@ int parse(char *input, char *cmd[CMDS][TOKS], int n) {
                         state = ERROR;
         }
         if (state == ERROR) {
-                free_cmd(cmd);
+                cmd_free(cmd);
                 return -1;
         }
         /* Return either given file descriptor or stdout */
         return fd ? fd : 1;
 }
 
-void free_cmd(char *cmd[CMDS][TOKS]) {
+void cmd_free(char *cmd[CMDS][TOKS]) {
         int cmd_index, tok_index;
         for (cmd_index = 0; cmd_index < CMDS; cmd_index++) {
                 if (cmd[cmd_index][0] == NULL)
@@ -264,7 +264,7 @@ void free_cmd(char *cmd[CMDS][TOKS]) {
         }
 }
 
-int execcmds(char *cmd[CMDS][TOKS], int fd) {
+int cmd_exec(char *cmd[CMDS][TOKS], int fd) {
         int i, pid;
         int even[2], odd[2];
         int *p0, *p1;
