@@ -57,6 +57,8 @@ int main(void) {
                 } else if (cmd_exec(cmd, fd) < 0) {
                                 fprintf(stderr, "esh: cmd_exec() failed\n");
                 }
+                if (fd != 1)
+                        close(fd);
                 cmd_free(cmd);
         }
 
@@ -81,9 +83,10 @@ int builtin_chdir(char *path) {
 /* Return file descriptor we want to write to */
 int parse(char *input, char *cmd[CMDS][TOKS], int n) {
         int i = 0, cmd_index, tok_index, buf_index;
-        enum { START, END, ERROR, SPACE, PIPE, TOKEN, REDIRECT } state;
+        enum { START, END, ERROR, QUOTE, SPACE, PIPE, TOKEN, REDIRECT } state;
         char buf[BUFMAX];
         char c;
+        char quote;
         int flag_redirect = 0;
         int fd = 0;
 
@@ -97,7 +100,7 @@ int parse(char *input, char *cmd[CMDS][TOKS], int n) {
                                 cmd_index = 0;
                                 tok_index = 0;
                                 buf_index = 0;
-                                if (c == '|' || c == '\0' || c == '>') {
+                                if (c == '|' || c == '\0' || c == '>' || c == '\"' || c == '\'') {
                                         state = ERROR;
                                 } else if (c == ' ') {
                                         state = SPACE;
@@ -146,11 +149,19 @@ int parse(char *input, char *cmd[CMDS][TOKS], int n) {
                                                 buf_index = 0;
                                                 state = REDIRECT;
                                         }
+                                } else if (c == '\"' || c == '\'') {
+                                        quote = c;
+                                        buf[buf_index++] = c;
+                                        state = QUOTE;
                                 } else if (c != ' ') {
                                         /* Begin reading new token into buffer */
                                         buf[buf_index++] = c;
                                         state = TOKEN;
                                 }
+                                break;
+                        case QUOTE:
+                                buf[buf_index++] = c;
+                                state = (c == quote) ? TOKEN : QUOTE;
                                 break;
                         case TOKEN:                           
                                 if (c == '|') {
@@ -190,13 +201,15 @@ int parse(char *input, char *cmd[CMDS][TOKS], int n) {
                                         cmd[cmd_index][0] = NULL;
                                         buf_index = 0;
                                         state = flag_redirect ? ERROR : flag_redirect;
+                                } else if (c == '\"' || c == '\'') {
+                                        state = ERROR;
                                 } else {
                                         buf[buf_index++] = c;
                                         state = TOKEN;
                                 }
                                 break;
                         case PIPE:
-                                if (c == '|' || c == '\0' || c == '>') {
+                                if (c == '|' || c == '\0' || c == '>' || c == '\"' || c == '\'') {
                                         state = ERROR;
                                 } else if (c != ' ') {
                                         /* Begin reading new token into buffer */
@@ -252,29 +265,29 @@ int parse(char *input, char *cmd[CMDS][TOKS], int n) {
 
 int cmd_exec(char *cmd[CMDS][TOKS], int fd) {
         int i, pid;
-        int even[2], odd[2];
-        int *p0, *p1;
+        int pipe0[2], pipe1[2];
+        int *read, *write;
 
         for (i = 0; i < CMDS; i++) {
                 if (cmd[i][0] == NULL)
                         break;
-                p0 = i & 1 ? odd : even;
-                p1 = i & 1 ? even : odd;
+                write = i & 1 ? pipe1 : pipe0;
+                read = i & 1 ? pipe0 : pipe1;
                 /* Make a new pipe child will write to */
-                if (pipe(p0) < 0)
+                if (pipe(write) < 0)
                         return -1;
                 pid = fork();
                 if (pid == 0) {
                         /* Read from previous pipe */
                         if (i > 0) {
-                                close(p1[1]);
-                                if (dup2(p1[0], 0) < 0)
+                                close(read[1]);
+                                if (dup2(read[0], 0) < 0)
                                         exit(-1);
                         }
                         /* Write to new pipe */
                         if (cmd[i+1][0] != NULL) {
-                                close(p0[0]);
-                                if (dup2(p0[1], 1) < 0)
+                                close(write[0]);
+                                if (dup2(write[1], 1) < 0)
                                         exit(-1);
                         } else {
                                 /* Last iteration - write to specified file */
@@ -289,8 +302,8 @@ int cmd_exec(char *cmd[CMDS][TOKS], int fd) {
                 } else if (pid > 0) {
                         if (i > 0) {
                                 /* Close previous pipe */
-                                close(p1[0]);
-                                close(p1[1]);
+                                close(read[0]);
+                                close(read[1]);
                         }
                 }
         }
