@@ -1,5 +1,5 @@
 /* esh.c - Eugene's SHell */
-/* TODO: Pipes */
+/* TODO: Pipes, set environment variables */
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -11,10 +11,11 @@
 #define MAXTOK          100
 #define PATH            "/home/edma2/bin/esh" /* Fake path */
 
-int external_cmd(char **args);
+int execcmds(char **cmds[], int n);
 int builtin_chdir(char *path);
 int builtin_cwd(void);
 void splitstring(char *buf, char *toks[], int n);
+void splitcmd(char *cmd, char *cmds[], int n);
 
 int main(void) {
         char buf[INPUTMAX];
@@ -50,11 +51,46 @@ int main(void) {
         return 0;
 }
 
-/* Split a string into an array of tokens */
-void splitstring(char *buf, char *toks[], int n) {
+/* 
+ * Split piped command into array of commands.
+ * Returns redirected or stdout file descriptor.
+ */
+int parse_input(char *cmd, char *cmds[], int n) {
+        int i, j, k;
+        char *path;
+        int perms;
+
+        cmds[0] = strtok(cmd, "|");
+        /* Parse arguments */
+        for (i = 1; i < n; i++) {
+                if ((cmds[i] = strtok(NULL, "|")) == NULL)
+                        break;
+        }
+        /* Examine last token, count redirection symbols */
+        for (j = 0, k = 0; j < strlen(cmds[i-1]); j++) {
+                if (cmds[i-1][j] == '>')
+                        k++;
+        }
+        /* Open file for writing */
+        if (k > 0) {
+                if ((path = strtok(cmd, "> ")) != NULL) {
+                        if (k == 1)
+                                return creat(path, 0666);
+                        if (k == 2)
+                                return open(path, O_RDWR|O_CREAT|O_APPEND, 0666);
+                        fprintf(stderr, "error: parse error (too many redirection symbols)\n");
+                        return -1;
+                }
+        }
+        /* Return stdout by default */
+        return 1;
+}
+
+/* Split command into tokens */
+void parse_cmd(char *cmd, char *toks[], int n) {
         int i;
 
-        toks[0] = strtok(buf, " ");
+        toks[0] = strtok(cmd, " ");
         /* Parse arguments */
         for (i = 1; i < n; i++) {
                 if ((toks[i] = strtok(NULL, " ")) == NULL)
@@ -65,24 +101,59 @@ void splitstring(char *buf, char *toks[], int n) {
         }
 }
 
-/* Launch external command */
-int external_cmd(char **args) {
-        int pid;
+int execcmds(char **cmds[], int n, int fd) {
+        int i, pid;
+        int even[2], odd[2];
+        int *p0, *p1;
 
-        pid = fork();
-        if (pid == 0) {
-                /* Child process */
-                if (execvp(*args, args) < 0) {
-                        /* Kill child process immediately if failed */
-                        fprintf(stderr, "error: execvp() failed\n");
+        for (i = 0; i < n; i++) {
+                p0 = i & 1 ? odd : even;
+                p1 = i & 1 ? even : odd;
+                /* Make a new pipe child will write to */
+                if (pipe(p0) < 0) {
+                        fprintf(stderr, "error: pipe() failed\n");
                         exit(-1);
                 }
-        } else {
-                /* Wait for child process to die */
-                while (wait(NULL) != pid)
-                        ;
+                pid = fork();
+                if (pid == 0) {
+                        /* Read from previous pipe */
+                        if (i > 0) {
+                                close(p1[1]);
+                                if (dup2(p1[0], 0) < 0) {
+                                        fprintf(stderr, "error: dup2() failed\n");
+                                        exit(-1);
+                                }
+                        }
+                        /* Write to new pipe */
+                        if (i < n-1) {
+                                close(p0[0]);
+                                if (dup2(p0[1], 1) < 0) {
+                                        fprintf(stderr, "error: dup2() failed\n");
+                                        exit(-1);
+                                }
+                        } else {
+                                /* Last iteration - write to file */
+                                if (dup2(fd, 1) < 0) {
+                                        fprintf(stderr, "error: dup2() failed\n");
+                                        exit(-1);
+                                }
+                        }
+                        /* Replace with new image in child process */
+                        if (execvp(*cmds[i], cmds[i]) < 0) {
+                                fprintf(stderr, "error: execvp() failed\n");
+                                exit(-1);
+                        }
+                } else if (pid > 0) {
+                        if (i > 0) {
+                                /* Close previous pipe */
+                                close(p1[0]);
+                                close(p1[1]);
+                        }
+                        /* Wait for child to die */
+                        while (wait(NULL) != pid)
+                                ;
+                }
         }
-
         return 0;
 }
 
