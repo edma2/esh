@@ -31,8 +31,11 @@ int main(void) {
                 if (fgets(input, INPUTMAX, stdin) == NULL)
                         break;
                 input[strlen(input)-1] = '\0';
-                fd = parse(input, cmd, INPUTMAX);
-
+                if ((fd = parse(input, cmd, INPUTMAX)) < 0) {
+                        fprintf(stderr, "error: parse() failed\n");
+                        free_cmd(cmd);
+                        continue;
+                }
                 /* Look at first token */
                 if (strcmp(cmd[0][0], "cd") == 0) {
                         if (cmd[0][2] != NULL || cmd[1][0] != NULL)
@@ -45,13 +48,17 @@ int main(void) {
                         else if (builtin_cwd() < 0) 
                                 fprintf(stderr, "error: builtin pwd failed\n");
                 } else if (strcmp(cmd[0][0], "exit") == 0) {
-                        if (cmd[0][1] != NULL || cmd[1][0] != NULL)
+                        if (cmd[0][1] != NULL || cmd[1][0] != NULL) {
                                 fprintf(stderr, "usage: exit\n");
-                        else
+                        } else {
+                                free_cmd(cmd);
                                 return 0;
+                        }
                 } else {
-                        execcmds(cmd, fd);
+                        if (execcmds(cmd, fd) < 0)
+                                fprintf(stderr, "error: execcmds() failed\n");
                 }
+                free_cmd(cmd);
         }
 
         return 0;
@@ -270,7 +277,7 @@ int execcmds(char *cmd[CMDS][TOKS], int fd) {
                 /* Make a new pipe child will write to */
                 if (pipe(p0) < 0) {
                         fprintf(stderr, "error: pipe() failed\n");
-                        exit(-1);
+                        return -1;
                 }
                 pid = fork();
                 if (pid == 0) {
