@@ -54,8 +54,7 @@ int main(void) {
                                 cmd_free(cmd);
                                 return 0;
                         }
-                } else {
-                        if (cmd_exec(cmd, fd) < 0)
+                } else if (cmd_exec(cmd, fd) < 0) {
                                 fprintf(stderr, "esh: cmd_exec() failed\n");
                 }
                 cmd_free(cmd);
