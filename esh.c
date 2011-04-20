@@ -1,4 +1,5 @@
 /* esh.c - Eugene's SHell */
+/* TODO: Command redirection doesn't append */
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -80,7 +81,7 @@ int builtin_chdir(char *path) {
         return chdir(path);
 }
 
-
+/* Return file descriptor we want to write to */
 int parse(char *input, char *cmd[CMDS][TOKS], int n) {
         int i = 0, cmd_index, tok_index, buf_index;
         enum { START, END, ERROR, SPACE, PIPE, TOKEN, REDIRECT } state;
@@ -210,22 +211,23 @@ int parse(char *input, char *cmd[CMDS][TOKS], int n) {
                                 if (c == '|') {
                                         state = ERROR;
                                 } else if (c == '>') {
-                                        state = ++flag_redirect > 2 ? ERROR : REDIRECT;
+                                        state = ++flag_redirect > 1 ? ERROR : REDIRECT;
                                 } else if (c == ' ') {
                                         /* This means we're done with the filename */
                                         if (buf_index > 0) {
                                                 buf[buf_index] = '\0';
-                                                if (flag_redirect == 1)
+                                                if (flag_redirect == 0)
                                                         fd = creat(buf, 0666);
                                                 else
                                                         fd = open(buf, O_RDWR|O_CREAT|O_APPEND, 0666);
+
                                         }
                                         state = REDIRECT;
                                 } else if (c == '\0') {
                                         /* This means we're done with the filename */
                                         if (buf_index > 0) {
                                                 buf[buf_index] = '\0';
-                                                if (flag_redirect == 1)
+                                                if (flag_redirect == 0)
                                                         fd = creat(buf, 0666);
                                                 else
                                                         fd = open(buf, O_RDWR|O_CREAT|O_APPEND, 0666);
