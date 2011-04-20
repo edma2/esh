@@ -299,12 +299,10 @@ int cmd_exec(char *cmd[CMDS][TOKS], int fd) {
                                 fprintf(stderr, "esh: command not found: %s\n", *cmd[i]);
                                 exit(-1);
                         }
-                } else if (pid > 0) {
-                        if (i > 0) {
+                } else if (pid > 0 && i > 0) {
                                 /* Close previous pipe */
                                 close(read[0]);
                                 close(read[1]);
-                        }
                 }
         }
         /* Wait for child to die */
